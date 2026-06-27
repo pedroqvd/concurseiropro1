@@ -53,7 +53,9 @@ const initializeStorage = (): Flashcard[] => {
 };
 
 export const getAllFlashcards = (): Flashcard[] => {
-  return initializeStorage();
+  const cards = initializeStorage();
+  // Limpa possíveis cards fantasmas que já ficaram presos no cache/localStorage
+  return cards.filter(c => c.disciplina?.trim() !== '' || c.pergunta?.trim() !== '');
 };
 
 export const getFlashcardsForReview = (): Flashcard[] => {

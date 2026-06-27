@@ -97,7 +97,11 @@ export async function getAllFlashcards(): Promise<Flashcard[]> {
     const data = await post<any>(WEBHOOKS.MULTI, { action: "read" });
     
     if (Array.isArray(data)) {
-      const makeCards = data.map(normalizeCard);
+      const makeCards = data
+        .map(normalizeCard)
+        // PROTEÇÃO: Ignora cards fantasmas (linhas em branco do Sheets ou JSON mal formatado)
+        .filter((c) => c.disciplina !== "" || c.pergunta !== "");
+        
       // 3. Atualiza os dados locais com o que veio do Make
       makeCards.forEach((mc) => {
         localCardsMap.set(mc.id, mc);
