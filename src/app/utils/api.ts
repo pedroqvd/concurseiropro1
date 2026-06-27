@@ -160,7 +160,11 @@ export async function createFlashcard(
     
     // Se o Make retornar o ID verdadeiro gerado pelo Sheets, atualiza o card local
     if (raw && raw.id) {
-       const updatedFromMake = normalizeCard(raw);
+       // Mescla os dados originais com o que o Make retornou (para não perder o texto se o Make mandar só o ID)
+       const updatedFromMake = normalizeCard({
+         ...data,
+         ...raw,
+       });
        // Troca o ID provisório pelo ID do Sheets
        const cards = localGetAll();
        const filtered = cards.filter(c => c.id !== localCard.id);
