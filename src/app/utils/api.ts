@@ -84,7 +84,6 @@ function normalizeCard(raw: any): Flashcard {
 export async function getAllFlashcards(): Promise<Flashcard[]> {
   if (!WEBHOOKS.MULTI) return localGetAll();
 
-  // Retorna do cache se ainda válido — evita 429
   if (isCacheValid()) return cache!.data;
 
   // 1. Pega os dados locais primeiro (fonte principal de todos os cards)
@@ -92,23 +91,35 @@ export async function getAllFlashcards(): Promise<Flashcard[]> {
   const localCardsMap = new Map(localCards.map((c) => [c.id, c]));
 
   try {
-    // 2. Busca do Make. Como o Make pode ter filtros (ex: só trazer cards de hoje),
-    // nós não podemos simplesmente substituir tudo, precisamos mesclar!
     const data = await post<any>(WEBHOOKS.MULTI, { action: "read" });
     
     if (Array.isArray(data)) {
       const makeCards = data
         .map(normalizeCard)
-        // PROTEÇÃO: Ignora cards fantasmas (linhas em branco do Sheets ou JSON mal formatado)
         .filter((c) => c.disciplina !== "" || c.pergunta !== "");
         
       // 3. Atualiza os dados locais com o que veio do Make
       makeCards.forEach((mc) => {
+        const local = localCardsMap.get(mc.id);
+        
+        if (local) {
+          // HEURÍSTICA DE PROTEÇÃO: 
+          // Se o Make retornar uma data de revisão menor (mais antiga) que a nossa local,
+          // ou se o Make disser que o card é "Novo" mas nós já revisamos localmente,
+          // significa que o Make falhou no update ou está atrasado. Confiamos no local!
+          const makeIsBehind = 
+            mc.proxima_revisao < local.proxima_revisao ||
+            (mc.nivel === "Novo" && local.nivel !== "Novo");
+            
+          if (makeIsBehind) {
+            return; // Ignora a versão desatualizada do Make
+          }
+        }
+        
         localCardsMap.set(mc.id, mc);
       });
       
       const finalCards = Array.from(localCardsMap.values());
-      // Salva a mescla no localStorage
       localStorage.setItem("concurseiro_pro_flashcards", JSON.stringify(finalCards));
       
       cache = { data: finalCards, ts: Date.now() };
