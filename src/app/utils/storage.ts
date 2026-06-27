@@ -10,43 +10,13 @@ export interface Flashcard {
 
 const STORAGE_KEY = 'concurseiro_pro_flashcards';
 
-// Initialize with sample data if empty
 const initializeStorage = (): Flashcard[] => {
   const existing = localStorage.getItem(STORAGE_KEY);
   if (existing) {
     return JSON.parse(existing);
   }
   
-  const today = new Date().toISOString().split('T')[0];
-  const sampleData: Flashcard[] = [
-    {
-      id: 1,
-      disciplina: 'Direito Administrativo',
-      pergunta: 'Quais são os princípios da Administração Pública previstos na CF/88?',
-      resposta: 'LIMPE: Legalidade, Impessoalidade, Moralidade, Publicidade e Eficiência.',
-      nivel: 'Novo',
-      proxima_revisao: today,
-      data_cadastro: today,
-    },
-    {
-      id: 2,
-      disciplina: 'AFO (Administração Financeira e Orçamentária)',
-      pergunta: 'O que é o princípio da anualidade orçamentária?',
-      resposta: 'Determina que o orçamento deve ser autorizado para um período determinado, geralmente um ano (exercício financeiro).',
-      nivel: 'Novo',
-      proxima_revisao: today,
-      data_cadastro: today,
-    },
-    {
-      id: 3,
-      disciplina: 'Português',
-      pergunta: 'Qual a diferença entre "há" e "a" indicando tempo?',
-      resposta: '"Há" indica tempo passado (há 2 dias = faz 2 dias). "A" indica tempo futuro (daqui a 2 dias).',
-      nivel: 'Novo',
-      proxima_revisao: today,
-      data_cadastro: today,
-    },
-  ];
+  const sampleData: Flashcard[] = [];
   
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sampleData));
   return sampleData;
