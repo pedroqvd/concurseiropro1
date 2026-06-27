@@ -87,32 +87,45 @@ export async function getAllFlashcards(): Promise<Flashcard[]> {
   // Retorna do cache se ainda válido — evita 429
   if (isCacheValid()) return cache!.data;
 
+  // 1. Pega os dados locais primeiro (fonte principal de todos os cards)
+  const localCards = localGetAll();
+  const localCardsMap = new Map(localCards.map((c) => [c.id, c]));
+
   try {
-    const data = await post<Record<string, string>[]>(
-      WEBHOOKS.MULTI,
-      { action: "read" },
-    );
-    const cards = Array.isArray(data)
-      ? data.map(normalizeCard)
-      : localGetAll();
-    cache = { data: cards, ts: Date.now() };
-    return cards;
-  } catch {
-    return localGetAll();
+    // 2. Busca do Make. Como o Make pode ter filtros (ex: só trazer cards de hoje),
+    // nós não podemos simplesmente substituir tudo, precisamos mesclar!
+    const data = await post<any>(WEBHOOKS.MULTI, { action: "read" });
+    
+    if (Array.isArray(data)) {
+      const makeCards = data.map(normalizeCard);
+      // 3. Atualiza os dados locais com o que veio do Make
+      makeCards.forEach((mc) => {
+        localCardsMap.set(mc.id, mc);
+      });
+      
+      const finalCards = Array.from(localCardsMap.values());
+      // Salva a mescla no localStorage
+      localStorage.setItem("concurseiro_pro_flashcards", JSON.stringify(finalCards));
+      
+      cache = { data: finalCards, ts: Date.now() };
+      return finalCards;
+    }
+
+    cache = { data: localCards, ts: Date.now() };
+    return localCards;
+  } catch (error) {
+    console.warn("Make falhou ou atrasou, usando dados locais", error);
+    return localCards;
   }
 }
 
-export async function getFlashcardsForReview(): Promise<
-  Flashcard[]
-> {
+export async function getFlashcardsForReview(): Promise<Flashcard[]> {
   const cards = await getAllFlashcards();
   const today = new Date().toISOString().split("T")[0];
   return cards.filter((card) => card.proxima_revisao <= today);
 }
 
-export async function getFlashcardById(
-  id: number,
-): Promise<Flashcard | undefined> {
+export async function getFlashcardById(id: number): Promise<Flashcard | undefined> {
   const cards = await getAllFlashcards();
   return cards.find((c) => c.id === id);
 }
@@ -121,26 +134,30 @@ export async function getFlashcardById(
 export async function createFlashcard(
   data: Pick<Flashcard, "disciplina" | "pergunta" | "resposta">,
 ): Promise<Flashcard> {
-  if (!WEBHOOKS.CREATE) return localCreate(data);
+  // Cria localmente PRIMEIRO para garantir que o site atualize imediatamente
+  const localCard = localCreate(data);
+
+  if (!WEBHOOKS.CREATE) return localCard;
+
   try {
-    const raw = await post<any>(
-      WEBHOOKS.CREATE,
-      data,
-    );
+    const raw = await post<any>(WEBHOOKS.CREATE, data);
     invalidateCache();
     
-    // Se o Make retornar apenas algo genérico como { success: true } ou { Accepted: true } sem os dados do card
-    if (raw && !raw.disciplina && !raw.pergunta) {
-       return normalizeCard({
-         ...data,
-         id: raw.id || (Date.now() + Math.floor(Math.random() * 100000)),
-         nivel: "Novo",
-       });
+    // Se o Make retornar o ID verdadeiro gerado pelo Sheets, atualiza o card local
+    if (raw && raw.id) {
+       const updatedFromMake = normalizeCard(raw);
+       // Troca o ID provisório pelo ID do Sheets
+       const cards = localGetAll();
+       const filtered = cards.filter(c => c.id !== localCard.id);
+       filtered.push(updatedFromMake);
+       localStorage.setItem("concurseiro_pro_flashcards", JSON.stringify(filtered));
+       return updatedFromMake;
     }
 
-    return normalizeCard(raw);
-  } catch {
-    return localCreate(data);
+    return localCard;
+  } catch (err) {
+    console.warn("Make error on create, but saved locally.", err);
+    return localCard;
   }
 }
 
@@ -149,19 +166,16 @@ export async function updateFlashcard(
   id: number,
   data: Pick<Flashcard, "disciplina" | "pergunta" | "resposta">,
 ): Promise<void> {
-  if (!WEBHOOKS.MULTI) {
-    localUpdate(id, data);
-    return;
-  }
+  // Atualiza no site imediatamente
+  localUpdate(id, data);
+  if (!WEBHOOKS.MULTI) return;
+
   try {
-    await post(WEBHOOKS.MULTI, {
-      action: "update",
-      id,
-      ...data,
-    });
+    // Sincroniza com o Make em background
+    await post(WEBHOOKS.MULTI, { action: "update", id, ...data });
     invalidateCache();
-  } catch {
-    localUpdate(id, data);
+  } catch (err) {
+    console.warn("Make error on update, but saved locally.", err);
   }
 }
 
@@ -170,34 +184,30 @@ export async function updateFlashcardFeedback(
   id: number,
   feedback: "Errei" | "Bom" | "Fácil",
 ): Promise<void> {
-  if (!WEBHOOKS.MULTI) {
-    localUpdateFeedback(id, feedback);
-    return;
-  }
+  // Atualiza no site imediatamente
+  localUpdateFeedback(id, feedback);
+  if (!WEBHOOKS.MULTI) return;
+
   try {
-    await post(WEBHOOKS.MULTI, {
-      action: "update",
-      id,
-      feedback,
-    });
+    // Sincroniza com o Make em background
+    await post(WEBHOOKS.MULTI, { action: "update", id, feedback });
     invalidateCache();
-  } catch {
-    localUpdateFeedback(id, feedback);
+  } catch (err) {
+    console.warn("Make error on update feedback, but saved locally.", err);
   }
 }
 
 // ─── DELETE ───────────────────────────────────────────────────────────────────
-export async function deleteFlashcard(
-  id: number,
-): Promise<void> {
-  if (!WEBHOOKS.MULTI) {
-    localDelete(id);
-    return;
-  }
+export async function deleteFlashcard(id: number): Promise<void> {
+  // Deleta do site imediatamente
+  localDelete(id);
+  if (!WEBHOOKS.MULTI) return;
+
   try {
+    // Deleta do Make em background
     await post(WEBHOOKS.MULTI, { action: "delete", id });
     invalidateCache();
-  } catch {
-    localDelete(id);
+  } catch (err) {
+    console.warn("Make error on delete, but deleted locally.", err);
   }
 }
