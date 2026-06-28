@@ -194,8 +194,12 @@ export async function updateFlashcard(
   if (!WEBHOOKS.MULTI) return;
 
   try {
-    // Sincroniza com o Make em background
-    await post(WEBHOOKS.MULTI, { action: "update", id, ...data });
+    const cards = localGetAll();
+    const updatedCard = cards.find(c => c.id === id);
+    if (!updatedCard) return;
+
+    // Envia O CARD INTEIRO para o Make, substituindo a linha toda (mais seguro)
+    await post(WEBHOOKS.MULTI, { action: "update", ...updatedCard });
     invalidateCache();
   } catch (err) {
     console.warn("Make error on update, but saved locally.", err);
@@ -212,8 +216,12 @@ export async function updateFlashcardFeedback(
   if (!WEBHOOKS.MULTI) return;
 
   try {
-    // Sincroniza com o Make em background
-    await post(WEBHOOKS.MULTI, { action: "update", id, feedback });
+    const cards = localGetAll();
+    const updatedCard = cards.find(c => c.id === id);
+    if (!updatedCard) return;
+
+    // Envia O CARD INTEIRO para o Make (incluindo as novas datas já calculadas)
+    await post(WEBHOOKS.MULTI, { action: "update", ...updatedCard });
     invalidateCache();
   } catch (err) {
     console.warn("Make error on update feedback, but saved locally.", err);
