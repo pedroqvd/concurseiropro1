@@ -94,9 +94,13 @@ export async function getAllFlashcards(): Promise<Flashcard[]> {
     const data = await post<any>(WEBHOOKS.MULTI, { action: "read" });
     
     if (Array.isArray(data)) {
+      const deletedIds = JSON.parse(localStorage.getItem('concurseiro_pro_deleted') || '[]');
+      
       const makeCards = data
         .map(normalizeCard)
-        .filter((c) => c.disciplina !== "" || c.pergunta !== "");
+        .filter((c) => c.disciplina !== "" || c.pergunta !== "")
+        // PROTEÇÃO ZUMBI: Se deletamos localmente, ignora o Make caso ele falhe em deletar
+        .filter((c) => !deletedIds.includes(c.id));
         
       // 3. Atualiza os dados locais com o que veio do Make
       makeCards.forEach((mc) => {

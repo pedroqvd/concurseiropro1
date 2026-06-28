@@ -90,4 +90,11 @@ export const deleteFlashcard = (id: number): void => {
   const cards = getAllFlashcards();
   const filtered = cards.filter(card => card.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+  
+  // Salva o ID deletado para evitar que o Make o ressuscite se falhar no Delete a Row
+  const deletedIds = JSON.parse(localStorage.getItem('concurseiro_pro_deleted') || '[]');
+  if (!deletedIds.includes(id)) {
+    deletedIds.push(id);
+    localStorage.setItem('concurseiro_pro_deleted', JSON.stringify(deletedIds));
+  }
 };
